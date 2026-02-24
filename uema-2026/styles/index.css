@@ -1,0 +1,86 @@
+
+/* Variáveis de Design do Sistema */
+:root {
+  --reurb-primary: #2563eb; /* blue-600 */
+  --reurb-primary-dark: #1d4ed8; /* blue-700 */
+  --reurb-secondary: #4f46e5; /* indigo-600 */
+  --reurb-bg: #f8fafc; /* slate-50 */
+  --reurb-text: #0f172a; /* slate-900 */
+  --reurb-border: #e2e8f0; /* slate-200 */
+  --reurb-radius-lg: 32px;
+  --reurb-radius-md: 16px;
+}
+
+/* Resets e Fontes */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--reurb-bg);
+  color: var(--reurb-text);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Scrollbar (Organizado) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Classes Utilitárias do Sistema (Design System) */
+.reurb-card {
+  background: white;
+  border: 1px solid var(--reurb-border);
+  border-radius: var(--reurb-radius-lg);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.reurb-card:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+}
+
+/* Estilos Específicos do Editor de Documentos */
+.reurb-editor-canvas {
+  width: 100%;
+  max-width: 816px;
+  min-height: 1056px;
+  background: white;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+  padding: 2cm;
+  border: 1px solid var(--reurb-border);
+  outline: none;
+}
+
+/* Animações Customizadas */
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-reurb-in {
+  animation: fadeInSlide 0.5s ease-out forwards;
+}

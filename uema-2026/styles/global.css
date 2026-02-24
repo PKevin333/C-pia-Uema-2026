@@ -1,0 +1,99 @@
+
+/* 
+ * REURB-Doc Flow - Estilos Globais
+ * Organizado e Centralizado
+ */
+
+:root {
+  --reurb-primary: #2563eb; /* blue-600 */
+  --reurb-primary-dark: #1d4ed8; /* blue-700 */
+  --reurb-secondary: #4f46e5; /* indigo-600 */
+  --reurb-bg: #f8fafc; /* slate-50 */
+  --reurb-text: #0f172a; /* slate-900 */
+  --reurb-border: #e2e8f0; /* slate-200 */
+  --reurb-radius-lg: 32px;
+  --reurb-radius-md: 16px;
+}
+
+/* Resets e Configurações de Base */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--reurb-bg);
+  color: var(--reurb-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar (Design Moderno) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  border: 2px solid #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Componentes de Design System (Classes Utilitárias Reutilizáveis) */
+.reurb-card {
+  background: white;
+  border: 1px solid var(--reurb-border);
+  border-radius: var(--reurb-radius-lg);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.reurb-card:hover {
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+}
+
+/* Área do Editor (Papel A4) */
+.reurb-editor-canvas {
+  width: 100%;
+  max-width: 816px; /* Largura aproximada A4 */
+  min-height: 1056px;
+  background: white;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+  padding: 2cm;
+  border: 1px solid var(--reurb-border);
+  outline: none;
+  margin: 0 auto;
+}
+
+/* Animações de Entrada */
+@keyframes fadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-reurb-in {
+  animation: fadeInSlide 0.5s ease-out forwards;
+}
+
+/* Ajustes de Tipografia */
+h1, h2, h3, h4 {
+  letter-spacing: -0.025em;
+}
