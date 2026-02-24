@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X, CheckCircle2, Clock, Lock, Shield, User, Hash,
   QrCode, Download, AlertCircle, ChevronRight, Pen
@@ -51,14 +51,12 @@ const formatDate = (iso: string) =>
     hour: '2-digit', minute: '2-digit', second: '2-digit'
   });
 
-// ─── QR Code simples via SVG (sem dependência externa) ───────────────────────
+// ─── QR Code simples via SVG ──────────────────────────────────────────────────
 const SimpleQRCode: React.FC<{ value: string; size?: number }> = ({ value, size = 120 }) => {
   const cells = 21;
   const cellSize = size / cells;
 
-  // Gera padrão pseudo-aleatório baseado no valor
   const getCell = (row: number, col: number): boolean => {
-    // Finder patterns (cantos)
     const inFinder = (r: number, c: number) =>
       (r < 7 && c < 7) || (r < 7 && c >= cells - 7) || (r >= cells - 7 && c < 7);
     if (inFinder(row, col)) {
@@ -69,7 +67,6 @@ const SimpleQRCode: React.FC<{ value: string; size?: number }> = ({ value, size 
         (row >= cells - 5 && row <= cells - 3 && col >= 2 && col <= 4);
       return isOuter || isInner;
     }
-    // Dados pseudo-aleatórios
     const seed = value.charCodeAt((row * cells + col) % value.length) ^ (row * 7 + col * 13);
     return (seed % 3) !== 0;
   };
@@ -125,61 +122,23 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   const [record, setRecord] = useState<SignatureRecord | null>(null);
   const [protocol] = useState(generateProtocol);
   const [documentHash] = useState(() => generateHash(documentContent + documentTitle + Date.now()));
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [hasDraw, setHasDraw] = useState(false);
 
   useEffect(() => {
     if (!isOpen) {
       setStep('config');
       setPin('');
       setPinError('');
-      setHasDraw(false);
       setActiveSignerIdx(0);
     }
   }, [isOpen]);
 
-  // ─── Canvas de assinatura manuscrita ───────────────────────────────────────
-  const startDraw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d')!;
-    const rect = canvas.getBoundingClientRect();
-    ctx.beginPath();
-    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-    setIsDrawing(true);
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !canvasRef.current) return;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d')!;
-    const rect = canvas.getBoundingClientRect();
-    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-    ctx.strokeStyle = '#1e3a5f';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-    setHasDraw(true);
-  };
-
-  const stopDraw = () => setIsDrawing(false);
-
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.getContext('2d')!.clearRect(0, 0, canvas.width, canvas.height);
-    setHasDraw(false);
-  };
-
   // ─── Assinar ───────────────────────────────────────────────────────────────
   const handleSign = async () => {
     if (pin.length < 4) { setPinError('PIN deve ter ao menos 4 dígitos.'); return; }
-    if (!hasDraw) { setPinError('Desenhe sua assinatura no campo acima.'); return; }
     setPinError('');
     setIsSigning(true);
 
-    await new Promise(r => setTimeout(r, 1500)); // simula processamento
+    await new Promise(r => setTimeout(r, 1500));
 
     const now = new Date().toISOString();
     const signer = signers[activeSignerIdx];
@@ -192,15 +151,12 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
     );
     setSigners(updated);
     setPin('');
-    setHasDraw(false);
-    clearCanvas();
     setIsSigning(false);
 
     const nextPending = updated.findIndex(s => s.status === 'pending');
     if (nextPending !== -1) {
       setActiveSignerIdx(nextPending);
     } else {
-      // Todos assinaram
       const finalRecord: SignatureRecord = {
         protocol,
         documentTitle,
@@ -239,7 +195,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
         {/* ─── STEP: CONFIG ──────────────────────────────────────────── */}
         {step === 'config' && (
           <div className="p-6 space-y-6">
-            {/* Info do documento */}
             <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
               <p className="text-xs text-slate-400 uppercase font-bold mb-1">Documento</p>
               <p className="font-semibold text-slate-800">{documentTitle}</p>
@@ -249,13 +204,12 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               </div>
             </div>
 
-            {/* Ordem de assinantes */}
             <div>
               <p className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
                 <User size={16} className="text-blue-600" /> Ordem de Assinatura
               </p>
               <div className="space-y-2">
-                {signers.map((s, i) => (
+                {signers.map((s) => (
                   <div key={s.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl">
                     <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">{s.order}</div>
                     <div className="flex-1">
@@ -268,7 +222,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               </div>
             </div>
 
-            {/* Info legal */}
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
               <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-700 leading-relaxed">
@@ -310,33 +263,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               <p className="text-xs text-blue-500 uppercase font-bold mb-1">Assinando agora</p>
               <p className="font-bold text-blue-900">{signers[activeSignerIdx]?.name}</p>
               <p className="text-sm text-blue-600">{signers[activeSignerIdx]?.role}</p>
-            </div>
-
-            {/* Canvas de assinatura */}
-            <div>
-              <p className="text-xs font-bold text-slate-600 uppercase mb-2 flex items-center gap-1">
-                <Pen size={12} /> Assinatura Manuscrita Digital
-              </p>
-              <div className="border-2 border-dashed border-slate-300 rounded-xl overflow-hidden bg-slate-50 relative">
-                <canvas
-                  ref={canvasRef}
-                  width={580}
-                  height={120}
-                  className="w-full cursor-crosshair touch-none"
-                  onMouseDown={startDraw}
-                  onMouseMove={draw}
-                  onMouseUp={stopDraw}
-                  onMouseLeave={stopDraw}
-                />
-                {!hasDraw && (
-                  <p className="absolute inset-0 flex items-center justify-center text-slate-300 text-sm pointer-events-none">
-                    Desenhe sua assinatura aqui
-                  </p>
-                )}
-              </div>
-              <button onClick={clearCanvas} className="text-xs text-slate-400 hover:text-slate-600 mt-1 underline">
-                Limpar
-              </button>
             </div>
 
             {/* PIN */}
@@ -396,7 +322,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
         {/* ─── STEP: COMPLETE ────────────────────────────────────────── */}
         {step === 'complete' && record && (
           <div className="p-6 space-y-5">
-            {/* Sucesso */}
             <div className="text-center py-4">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
                 <CheckCircle2 size={32} className="text-green-600" />
@@ -405,7 +330,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               <p className="text-sm text-slate-500 mt-1">Todas as assinaturas foram coletadas com sucesso.</p>
             </div>
 
-            {/* Protocolo e QR */}
             <div className="bg-slate-800 rounded-xl p-4 flex items-center gap-4">
               <SimpleQRCode value={record.qrCodeData} size={100} />
               <div className="text-white">
@@ -416,13 +340,11 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               </div>
             </div>
 
-            {/* Hash do documento */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
               <p className="text-[11px] text-slate-400 uppercase font-bold mb-2">Hash do Documento (SHA-256 simulado)</p>
               <p className="text-xs font-mono text-slate-700 break-all">{record.documentHash}</p>
             </div>
 
-            {/* Lista de assinaturas */}
             <div className="space-y-2">
               <p className="text-xs font-bold text-slate-500 uppercase">Registro de Assinaturas</p>
               {record.signers.map(s => (
@@ -437,7 +359,6 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               ))}
             </div>
 
-            {/* Info legal */}
             <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex gap-3">
               <Shield size={16} className="text-blue-500 shrink-0 mt-0.5" />
               <p className="text-[11px] text-blue-700 leading-relaxed">
