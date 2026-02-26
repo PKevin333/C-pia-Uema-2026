@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   HashRouter as Router, Routes, Route, Navigate
@@ -15,6 +14,8 @@ import Editor from './components/editor/Editor';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { SignupScreen } from './components/auth/SignupScreen';
 import { ForgotPasswordScreen } from './components/auth/ForgotPasswordScreen';
+
+type DocumentStatus = 'Draft' | 'Review' | 'Approved' | 'Signed';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -68,7 +69,8 @@ const App: React.FC = () => {
                         status="Draft"
                         initialContent="<h1 style='text-align:center'>PORTARIA DE INSTAURAÇÃO REURB</h1><p>Considerando a Lei Federal 13.465/2017...</p>"
                         onSave={(c, t, s) => {
-                          dbService.documents.upsert({ title: t, content: c, processId: 'PR-2024-001', status: s || 'Draft' });
+                          const status = (s || 'Draft') as DocumentStatus;
+                          dbService.documents.upsert({ title: t, content: c, processId: 'PR-2024-001', status });
                           if (s === 'Signed') {
                             alert('Documento assinado digitalmente e salvo com sucesso!');
                           } else {

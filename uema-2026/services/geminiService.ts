@@ -73,8 +73,10 @@ export const geminiService = {
 
   handleAiError(error: any): string {
     console.error("[Gemini Error]:", error);
+    console.error("[Gemini Error message]:", error.message);
+    console.error("[Gemini Error status]:", error.status);
     if (error.message?.includes("429")) return "ERRO_SISTEMA: O servidor de IA está ocupado. Tente em instantes.";
-    if (error.message?.includes("API key not found")) return "ERRO_SISTEMA: Chave de API não configurada. Verifique o arquivo .env.";
-    return "Erro inesperado na IA. Verifique sua conexão e chave de API.";
+    if (error.message?.includes("API_KEY_INVALID") || error.message?.includes("API key not found")) return "ERRO_SISTEMA: Chave de API inválida. Verifique o arquivo .env.";
+    return `Erro inesperado na IA: ${error.message}`;
   }
 };

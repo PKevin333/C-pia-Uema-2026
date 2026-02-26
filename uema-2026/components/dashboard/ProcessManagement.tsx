@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Filter, Plus, LayoutGrid, List, 
@@ -7,7 +6,7 @@ import {
   AlertCircle, CheckCircle2, Clock
 } from 'lucide-react';
 import { dbService } from '../../services/databaseService';
-import { REURBProcess, ProcessStatus } from '../../types';
+import { REURBProcess, ProcessStatus } from '../../types/index';
 import { ProcessTable } from './ProcessTable';
 import { NewProcessModal } from './NewProcessModal';
 
