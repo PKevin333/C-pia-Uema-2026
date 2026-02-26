@@ -1,196 +1,154 @@
-
-import React, { useState } from 'react';
-import { X, User, MapPin, Layers, Ruler, ArrowRight, Search, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Bell, Plus, Briefcase, Clock, FileText, ArrowUpRight } from 'lucide-react';
 import { dbService } from '../../services/databaseService';
+import { MOCK_MODELS } from '../../constants';
+import { User, REURBProcess, ProcessStatus } from '../../types/index';
+import { ProcessTable } from './ProcessTable';
+import { NewProcessModal } from './NewProcessModal';
 
-interface NewProcessModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSuccess: () => void;
-  currentUser: any;
-}
+export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
+  const [processes, setProcesses] = useState<REURBProcess[]>([]);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
-export const NewProcessModal: React.FC<NewProcessModalProps> = ({ isOpen, onClose, onSuccess, currentUser }) => {
-  const [loading, setLoading] = useState(false);
-  const [searchingCep, setSearchingCep] = useState(false);
-  const [cep, setCep] = useState('');
-  const [form, setForm] = useState({
-    applicant: '',
-    location: '',
-    modality: 'REURB-S' as 'REURB-S' | 'REURB-E',
-    area: ''
-  });
-
-  if (!isOpen) return null;
-
-  const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '');
-    setCep(value);
-
-    if (value.length === 8) {
-      setSearchingCep(true);
-      try {
-        const response = await fetch(`https://viacep.com.br/ws/${value}/json/`);
-        const data = await response.json();
-        
-        if (!data.erro) {
-          const address = `${data.logradouro}${data.logradouro ? ', ' : ''}${data.bairro} - ${data.localidade}/${data.uf}`;
-          setForm(prev => ({ ...prev, location: address }));
-        } else {
-          // Opcional: Feedback de CEP não encontrado
-        }
-      } catch (err) {
-        console.error("Erro ao buscar CEP:", err);
-      } finally {
-        setSearchingCep(false);
-      }
-    }
+  const fetchProcesses = () => {
+    setProcesses(dbService.processes.selectAll());
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  useEffect(() => {
+    fetchProcesses();
+  }, []);
 
-    try {
-      dbService.processes.insert({
-        title: form.applicant,
-        applicant: form.applicant,
-        location: form.location,
-        modality: form.modality,
-        area: form.area ? `${form.area} m²` : 'Não informada',
-        responsibleName: currentUser.name || 'Admin',
-        technicianId: currentUser.id,
-        legalId: currentUser.id
-      });
-      
-      onSuccess();
-      onClose();
-      setForm({ applicant: '', location: '', modality: 'REURB-S', area: '' });
-      setCep('');
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao criar processo.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const stats = [
+    {
+      label: 'Processos Ativos',
+      value: processes.length.toString(),
+      change: '+2',
+      icon: Briefcase,
+      color: 'text-blue-600',
+      bg: 'bg-blue-50',
+    },
+    {
+      label: 'Em Andamento',
+      value: processes.filter(p => p.status === ProcessStatus.EM_ANDAMENTO).length.toString(),
+      change: '0',
+      icon: Clock,
+      color: 'text-amber-600',
+      bg: 'bg-amber-50',
+    },
+    {
+      label: 'Concluídos',
+      value: processes.filter(p => p.status === ProcessStatus.CONCLUIDO).length.toString(),
+      change: '+1',
+      icon: FileText,
+      color: 'text-green-600',
+      bg: 'bg-green-50',
+    },
+  ];
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-        <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
-          <div>
-            <h3 className="text-xl font-black text-slate-800 tracking-tight">Novo Processo REURB</h3>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Abertura de Protocolo Digital</p>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400">
-            <X size={24} />
+    <div className="p-10 max-w-7xl mx-auto animate-in fade-in duration-700">
+      <header className="mb-12 flex justify-between items-end">
+        <div>
+          <h2 className="text-4xl font-black text-slate-800 tracking-tight">
+            Bem-vindo, {user.name.split(' ')[0]}
+          </h2>
+          <p className="text-slate-500 mt-2 font-medium">
+            Controle central de regularização fundiária municipal.
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <button className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-500 relative hover:shadow-md transition-all">
+            <Bell size={22} />
+            <span className="absolute top-3 right-3 w-3 h-3 bg-red-500 rounded-full border-[3px] border-white"></span>
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all"
+          >
+            <Plus size={20} /> Novo Processo
           </button>
         </div>
+      </header>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-5">
-          <div className="space-y-1">
-            <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-2">
-              <User size={12} /> Requerente (Nome Completo)
-            </label>
-            <input 
-              required
-              type="text" 
-              value={form.applicant}
-              onChange={(e) => setForm({...form, applicant: e.target.value})}
-              placeholder="Nome do cidadão ou associação"
-              className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-200 focus:bg-white outline-none text-sm font-bold transition-all"
-            />
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div className="col-span-1 space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-2">
-                <Search size={12} /> CEP
-              </label>
-              <div className="relative">
-                <input 
-                  type="text" 
-                  maxLength={8}
-                  value={cep}
-                  onChange={handleCepChange}
-                  placeholder="00000000"
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-200 focus:bg-white outline-none text-sm font-black transition-all"
-                />
-                {searchingCep && (
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                    <Loader2 size={16} className="text-blue-600 animate-spin" />
-                  </div>
-                )}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+        {stats.map((stat, i) => (
+          <div
+            key={i}
+            className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group"
+          >
+            <div className="flex justify-between items-start mb-6">
+              <div className={`${stat.bg} ${stat.color} p-4 rounded-[20px] transition-transform group-hover:rotate-3`}>
+                <stat.icon size={28} />
               </div>
+              <span
+                className={`text-[10px] font-black tracking-widest px-3 py-1.5 rounded-full uppercase ${
+                  stat.change.startsWith('+')
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-slate-100 text-slate-600'
+                }`}
+              >
+                {stat.change} Hoje
+              </span>
             </div>
-
-            <div className="col-span-2 space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-2">
-                <MapPin size={12} /> Localização / Núcleo
-              </label>
-              <input 
-                required
-                type="text" 
-                value={form.location}
-                onChange={(e) => setForm({...form, location: e.target.value})}
-                placeholder="Logradouro, Bairro - Cidade/UF"
-                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-200 focus:bg-white outline-none text-sm font-bold transition-all"
-              />
-            </div>
+            <h3 className="text-slate-400 text-xs font-black uppercase tracking-widest">{stat.label}</h3>
+            <p className="text-4xl font-black text-slate-800 mt-2">{stat.value}</p>
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-2">
-                <Layers size={12} /> Modalidade
-              </label>
-              <div className="relative">
-                <select 
-                  value={form.modality}
-                  onChange={(e) => setForm({...form, modality: e.target.value as any})}
-                  className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-200 focus:bg-white outline-none text-sm font-black transition-all appearance-none"
-                >
-                  <option value="REURB-S">REURB-S (Social)</option>
-                  <option value="REURB-E">REURB-E (Específica)</option>
-                </select>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                   <ArrowRight size={14} className="rotate-90" />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest flex items-center gap-2">
-                <Ruler size={12} /> Área Est. (m²)
-              </label>
-              <input 
-                type="number" 
-                value={form.area}
-                onChange={(e) => setForm({...form, area: e.target.value})}
-                placeholder="Ex: 250"
-                className="w-full px-5 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-50 focus:border-blue-200 focus:bg-white outline-none text-sm font-bold transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="pt-4">
-            <button 
-              type="submit"
-              disabled={loading || searchingCep}
-              className="w-full py-5 bg-blue-600 text-white rounded-[24px] font-black text-sm uppercase tracking-widest shadow-2xl shadow-blue-100 hover:bg-blue-700 hover:-translate-y-1 active:translate-y-0 transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:translate-y-0"
-            >
-              {loading ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <>
-                  Gerar Novo Protocolo <ArrowRight size={20} />
-                </>
-              )}
-            </button>
-          </div>
-        </form>
+        ))}
       </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+        <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-100 shadow-sm flex flex-col overflow-hidden">
+          <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/20">
+            <h3 className="font-black text-slate-800 text-lg">Processos Recentes</h3>
+            <Link
+              to="/processes"
+              className="text-blue-600 text-sm font-black hover:underline flex items-center gap-2"
+            >
+              Ver Todos <ArrowUpRight size={16} />
+            </Link>
+          </div>
+          <ProcessTable processes={processes.slice(0, 5)} currentUser={user} />
+        </div>
+
+        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden h-fit">
+          <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-900 text-white">
+            <h3 className="font-black text-lg">Modelos Oficiais</h3>
+          </div>
+          <div className="p-6 space-y-4">
+            {MOCK_MODELS.slice(0, 4).map((model) => (
+              <div
+                key={model.id}
+                className="p-4 bg-slate-50/50 border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-white transition-all group flex items-center justify-between cursor-pointer"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 bg-white rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-blue-500 group-hover:border-blue-100 transition-all">
+                    <FileText size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-all">
+                      {model.name}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                      Versão {model.version}
+                    </p>
+                  </div>
+                </div>
+                <button className="p-2 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-600 hover:border-blue-200">
+                  <Plus size={18} />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <NewProcessModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSuccess={fetchProcesses}
+        currentUser={user}
+      />
     </div>
   );
 };
