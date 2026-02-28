@@ -1,154 +1,187 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Bell, Plus, Briefcase, Clock, FileText, ArrowUpRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, Plus } from 'lucide-react';
 import { dbService } from '../../services/databaseService';
-import { MOCK_MODELS } from '../../constants';
-import { User, REURBProcess, ProcessStatus } from '../../types/index';
-import { ProcessTable } from './ProcessTable';
-import { NewProcessModal } from './NewProcessModal';
+import { User } from '../../types/index';
 
-export const Dashboard: React.FC<{ user: User }> = ({ user }) => {
-  const [processes, setProcesses] = useState<REURBProcess[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+interface NewProcessModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  currentUser: User;
+}
 
-  const fetchProcesses = () => {
-    setProcesses(dbService.processes.selectAll());
+export const NewProcessModal: React.FC<NewProcessModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  currentUser,
+}) => {
+  const [form, setForm] = useState({
+    title: '',
+    applicant: '',
+    location: '',
+    modality: 'REURB-S' as 'REURB-S' | 'REURB-E',
+    area: '',
+    responsibleName: '',
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  useEffect(() => {
-    fetchProcesses();
-  }, []);
-
-  const stats = [
-    {
-      label: 'Processos Ativos',
-      value: processes.length.toString(),
-      change: '+2',
-      icon: Briefcase,
-      color: 'text-blue-600',
-      bg: 'bg-blue-50',
-    },
-    {
-      label: 'Em Andamento',
-      value: processes.filter(p => p.status === ProcessStatus.EM_ANDAMENTO).length.toString(),
-      change: '0',
-      icon: Clock,
-      color: 'text-amber-600',
-      bg: 'bg-amber-50',
-    },
-    {
-      label: 'Concluídos',
-      value: processes.filter(p => p.status === ProcessStatus.CONCLUIDO).length.toString(),
-      change: '+1',
-      icon: FileText,
-      color: 'text-green-600',
-      bg: 'bg-green-50',
-    },
-  ];
+  const handleSubmit = async () => {
+    if (!form.title || !form.applicant) {
+      setError('Preencha os campos obrigatórios: Título e Requerente.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      dbService.processes.insert({
+        ...form,
+        technicianId: currentUser.id,
+        legalId: currentUser.id,
+      });
+      onSuccess();
+      onClose();
+      setForm({ title: '', applicant: '', location: '', modality: 'REURB-S', area: '', responsibleName: '' });
+    } catch (err) {
+      setError('Erro ao criar processo. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="p-10 max-w-7xl mx-auto animate-in fade-in duration-700">
-      <header className="mb-12 flex justify-between items-end">
-        <div>
-          <h2 className="text-4xl font-black text-slate-800 tracking-tight">
-            Bem-vindo, {user.name.split(' ')[0]}
-          </h2>
-          <p className="text-slate-500 mt-2 font-medium">
-            Controle central de regularização fundiária municipal.
-          </p>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-[32px] shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+        
+        {/* Header */}
+        <div className="flex items-center justify-between p-8 border-b border-slate-100">
+          <div>
+            <h2 className="text-xl font-black text-slate-800">Novo Protocolo</h2>
+            <p className="text-slate-400 text-sm font-medium mt-0.5">Preencha os dados do processo REURB</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
+          >
+            <X size={22} />
+          </button>
         </div>
-        <div className="flex items-center gap-4">
-          <button className="p-3 bg-white border border-slate-200 rounded-2xl text-slate-500 relative hover:shadow-md transition-all">
-            <Bell size={22} />
-            <span className="absolute top-3 right-3 w-3 h-3 bg-red-500 rounded-full border-[3px] border-white"></span>
+
+        {/* Formulário */}
+        <div className="p-8 space-y-5">
+          {error && (
+            <div className="bg-red-50 border border-red-100 text-red-600 text-sm font-medium px-4 py-3 rounded-2xl">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+              Título do Núcleo / Processo *
+            </label>
+            <input
+              name="title"
+              value={form.title}
+              onChange={handleChange}
+              placeholder="Ex: Núcleo Habitacional Esperança"
+              className="w-full px-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+              Requerente *
+            </label>
+            <input
+              name="applicant"
+              value={form.applicant}
+              onChange={handleChange}
+              placeholder="Ex: Associação de Moradores Vila Verde"
+              className="w-full px-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 transition-all"
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+              Localização
+            </label>
+            <input
+              name="location"
+              value={form.location}
+              onChange={handleChange}
+              placeholder="Ex: Bairro Santa Luzia, São Luís - MA"
+              className="w-full px-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 transition-all"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+                Modalidade
+              </label>
+              <select
+                name="modality"
+                value={form.modality}
+                onChange={handleChange}
+                className="w-full px-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl text-sm font-bold text-slate-700 outline-none focus:bg-white focus:border-blue-200 transition-all cursor-pointer"
+              >
+                <option value="REURB-S">REURB-S</option>
+                <option value="REURB-E">REURB-E</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+                Área Total
+              </label>
+              <input
+                name="area"
+                value={form.area}
+                onChange={handleChange}
+                placeholder="Ex: 15.400 m²"
+                className="w-full px-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 transition-all"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">
+              Responsável Técnico
+            </label>
+            <input
+              name="responsibleName"
+              value={form.responsibleName}
+              onChange={handleChange}
+              placeholder="Ex: Eng. João da Silva"
+              className="w-full px-4 py-3.5 bg-slate-50 border border-transparent rounded-2xl text-sm font-medium text-slate-800 outline-none focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 transition-all"
+            />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-8 pb-8 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-3.5 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all"
+          >
+            Cancelar
           </button>
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all"
+            onClick={handleSubmit}
+            disabled={loading}
+            className="flex-1 py-3.5 bg-blue-600 text-white rounded-2xl font-bold text-sm hover:bg-blue-700 shadow-xl shadow-blue-100 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
           >
-            <Plus size={20} /> Novo Processo
+            {loading ? 'Criando...' : (<><Plus size={18} /> Criar Processo</>)}
           </button>
         </div>
-      </header>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-        {stats.map((stat, i) => (
-          <div
-            key={i}
-            className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group"
-          >
-            <div className="flex justify-between items-start mb-6">
-              <div className={`${stat.bg} ${stat.color} p-4 rounded-[20px] transition-transform group-hover:rotate-3`}>
-                <stat.icon size={28} />
-              </div>
-              <span
-                className={`text-[10px] font-black tracking-widest px-3 py-1.5 rounded-full uppercase ${
-                  stat.change.startsWith('+')
-                    ? 'bg-green-100 text-green-700'
-                    : 'bg-slate-100 text-slate-600'
-                }`}
-              >
-                {stat.change} Hoje
-              </span>
-            </div>
-            <h3 className="text-slate-400 text-xs font-black uppercase tracking-widest">{stat.label}</h3>
-            <p className="text-4xl font-black text-slate-800 mt-2">{stat.value}</p>
-          </div>
-        ))}
       </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        <div className="lg:col-span-2 bg-white rounded-[32px] border border-slate-100 shadow-sm flex flex-col overflow-hidden">
-          <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/20">
-            <h3 className="font-black text-slate-800 text-lg">Processos Recentes</h3>
-            <Link
-              to="/processes"
-              className="text-blue-600 text-sm font-black hover:underline flex items-center gap-2"
-            >
-              Ver Todos <ArrowUpRight size={16} />
-            </Link>
-          </div>
-          <ProcessTable processes={processes.slice(0, 5)} currentUser={user} />
-        </div>
-
-        <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden h-fit">
-          <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-900 text-white">
-            <h3 className="font-black text-lg">Modelos Oficiais</h3>
-          </div>
-          <div className="p-6 space-y-4">
-            {MOCK_MODELS.slice(0, 4).map((model) => (
-              <div
-                key={model.id}
-                className="p-4 bg-slate-50/50 border border-slate-100 rounded-2xl hover:border-blue-200 hover:bg-white transition-all group flex items-center justify-between cursor-pointer"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-white rounded-xl border border-slate-200 flex items-center justify-center text-slate-400 group-hover:text-blue-500 group-hover:border-blue-100 transition-all">
-                    <FileText size={20} />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-all">
-                      {model.name}
-                    </h4>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
-                      Versão {model.version}
-                    </p>
-                  </div>
-                </div>
-                <button className="p-2 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-blue-600 hover:border-blue-200">
-                  <Plus size={18} />
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <NewProcessModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSuccess={fetchProcesses}
-        currentUser={user}
-      />
     </div>
   );
 };
