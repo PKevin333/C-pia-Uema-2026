@@ -9,7 +9,7 @@ import {
   Signer,
   SignatureRecord,
   SignatureEvent,
-} from '../../services/assinaturaService'; // ✅ AQUI (corrigido)
+} from '../../services/assinaturaService';
 
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleString('pt-BR', {
@@ -28,12 +28,6 @@ interface SignatureModalProps {
   onSignatureComplete: (record: SignatureRecord) => void;
 }
 
-const DEFAULT_SIGNERS: Array<Omit<Signer, 'status' | 'signedAt' | 'signatureHash' | 'ip'>> = [
-  { id: 'sig-1', name: 'Responsável Técnico', role: 'Engenheiro/Urbanista', email: 'tecnico@prefeitura.gov.br', order: 1 },
-  { id: 'sig-2', name: 'Secretário de Regularização', role: 'Secretário Municipal', email: 'secretario@prefeitura.gov.br', order: 2 },
-  { id: 'sig-3', name: 'Prefeito Municipal', role: 'Prefeito', email: 'prefeito@prefeitura.gov.br', order: 3 },
-];
-
 type Step = 'config' | 'signing' | 'complete';
 type FlowState = 'idle' | 'creating' | 'starting' | 'requesting' | 'done' | 'error';
 
@@ -49,6 +43,58 @@ const EventTypeLabel: Record<string, string> = {
   ERROR: 'Erro',
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MOCK USERS (fácil de trocar por backend depois)
+// ─────────────────────────────────────────────────────────────────────────────
+type MockUser = { id: string; name: string; email: string };
+
+const MOCK_USERS: MockUser[] = [
+  { id: 'u1', name: 'João da Silva', email: 'joao@prefeitura.gov.br' },
+  { id: 'u2', name: 'Maria Souza', email: 'maria.souza@prefeitura.gov.br' },
+  { id: 'u3', name: 'Carlos Lima', email: 'carlos.lima@prefeitura.gov.br' },
+  { id: 'u4', name: 'Bruno Almeida', email: 'bruno.almeida@prefeitura.gov.br' },
+  { id: 'u5', name: 'Ana Martins', email: 'ana.martins@prefeitura.gov.br' },
+  { id: 'u6', name: 'Luis Ferreira', email: 'luis.ferreira@prefeitura.gov.br' },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Definition of the signing stages (roles/labels). Person is chosen in config.
+// ─────────────────────────────────────────────────────────────────────────────
+type StageKey = 'responsavel' | 'secretario' | 'prefeito';
+
+type StageDef = {
+  key: StageKey;
+  signerId: string; // id do signatário no fluxo (estável)
+  label: string;    // "Responsável Técnico"
+  role: string;     // "Engenheiro/Urbanista"
+  order: number;
+};
+
+const STAGES: StageDef[] = [
+  { key: 'responsavel', signerId: 'sig-1', label: 'Responsável Técnico', role: 'Engenheiro/Urbanista', order: 1 },
+  { key: 'secretario', signerId: 'sig-2', label: 'Secretário de Regularização', role: 'Secretário Municipal', order: 2 },
+  { key: 'prefeito', signerId: 'sig-3', label: 'Prefeito Municipal', role: 'Prefeito', order: 3 },
+];
+
+function buildSignersFromSelection(selection: Record<StageKey, string>): Array<Omit<Signer, 'status' | 'signedAt' | 'signatureHash' | 'ip'>> {
+  return STAGES.map(stage => {
+    const userId = selection[stage.key];
+    const user = MOCK_USERS.find(u => u.id === userId);
+
+    // fallback seguro (não quebra se faltar seleção)
+    const name = user?.name ?? '(Não definido)';
+    const email = user?.email ?? '';
+
+    return {
+      id: stage.signerId,
+      name,         // nome da pessoa
+      email,
+      role: stage.label + ' • ' + stage.role, // cargo + função (fica bem “acadêmico”)
+      order: stage.order,
+    };
+  });
+}
+
 export const SignatureModal: React.FC<SignatureModalProps> = ({
   isOpen, onClose, documentTitle, documentContent, currentUser, onSignatureComplete
 }) => {
@@ -61,6 +107,13 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
   const [events, setEvents] = useState<SignatureEvent[]>([]);
   const [activeSignerIdx, setActiveSignerIdx] = useState(0);
 
+  // seleção de quem assina cada etapa (mock)
+  const [assigned, setAssigned] = useState<Record<StageKey, string>>({
+    responsavel: 'u1',
+    secretario: 'u2',
+    prefeito: 'u3',
+  });
+
   const actorName = useMemo(() => currentUser?.name || 'Operador', [currentUser]);
 
   useEffect(() => {
@@ -72,41 +125,58 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
       setRecord(null);
       setEvents([]);
       setActiveSignerIdx(0);
+
+      // reset seleção mock (opcional)
+      setAssigned({
+        responsavel: 'u1',
+        secretario: 'u2',
+        prefeito: 'u3',
+      });
     }
   }, [isOpen]);
+
+  const signersPreview = useMemo(() => {
+    // usado no step config (preview da ordem)
+    return buildSignersFromSelection(assigned).map(s => ({ ...s, status: 'pending' as const }));
+  }, [assigned]);
+
+  const isSelectionValid = useMemo(() => {
+    // requisito mínimo: todos selecionados (e-mail não vazio)
+    return signersPreview.every(s => !!s.email);
+  }, [signersPreview]);
 
   const ensureCreated = async () => {
     if (record) return record;
 
     setFlow('creating');
+
+    const signersInput = buildSignersFromSelection(assigned);
+
     const created = await assinaturaService.createSignature({
       documentTitle,
       documentContent,
-      signers: DEFAULT_SIGNERS,
+      signers: signersInput,
       actor: { name: actorName, email: currentUser?.email },
     });
+
     setRecord(created);
     setEvents(created.events);
     setFlow('idle');
     return created;
   };
 
-  const refresh = async (protocol: string) => {
-    const updated = await assinaturaService.getSignature(protocol);
-    setRecord(updated);
-    setEvents(updated.events);
-    const nextIdx = updated.signers.findIndex(s => s.status === 'pending');
-    setActiveSignerIdx(nextIdx === -1 ? updated.signers.length - 1 : nextIdx);
-    if (updated.status === 'completed') {
-      setStep('complete');
-      onSignatureComplete(updated);
-    }
-  };
-
   const startFlow = async () => {
+    if (!isSelectionValid) {
+      setPinError('Defina um usuário para todas as etapas antes de iniciar.');
+      return;
+    }
+
     const created = await ensureCreated();
     setFlow('starting');
+
+    // não precisa passar actorName aqui; pode manter se quiser
     const updated = await assinaturaService.startFlow(created.protocol, actorName);
+
     setRecord(updated);
     setEvents(updated.events);
     setFlow('idle');
@@ -114,6 +184,20 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
 
     const nextIdx = updated.signers.findIndex(s => s.status === 'pending');
     setActiveSignerIdx(nextIdx === -1 ? 0 : nextIdx);
+  };
+
+  const refresh = async (protocol: string) => {
+    const updated = await assinaturaService.getSignature(protocol);
+    setRecord(updated);
+    setEvents(updated.events);
+
+    const nextIdx = updated.signers.findIndex(s => s.status === 'pending');
+    setActiveSignerIdx(nextIdx === -1 ? updated.signers.length - 1 : nextIdx);
+
+    if (updated.status === 'completed') {
+      setStep('complete');
+      onSignatureComplete(updated);
+    }
   };
 
   const handleSign = async () => {
@@ -125,7 +209,13 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
 
     try {
       const signer = record.signers[activeSignerIdx];
-      const updated = await assinaturaService.requestSignerSignature(record.protocol, signer.id, pin, signer.name);
+
+      // ✅ chamada limpa: não força actorName (service já usa signer.name)
+      const updated = await assinaturaService.requestSignerSignature(
+        record.protocol,
+        signer.id,
+        pin
+      );
 
       setRecord(updated);
       setEvents(updated.events);
@@ -161,9 +251,15 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
 
   const protocol = record?.protocol ?? '—';
   const documentHash = record?.documentHash ?? '—';
-  const signers = record?.signers ?? DEFAULT_SIGNERS.map(s => ({ ...s, status: 'pending' as const }));
 
+  const signers = record?.signers ?? signersPreview;
   const signerNow = signers[activeSignerIdx];
+
+  // ✅ “realista ICP”: só o usuário atribuído (por email) consegue assinar aquela etapa
+  const canSign =
+    !!currentUser?.email &&
+    !!signerNow?.email &&
+    currentUser.email.toLowerCase() === signerNow.email.toLowerCase();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -194,12 +290,58 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               </div>
             </div>
 
+            {/* 🔥 NOVO: Definir responsáveis (mock) */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4">
+              <p className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                <User size={16} className="text-blue-600" /> Definir Responsáveis (Mock)
+              </p>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-3 mb-4">
+                <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 leading-relaxed">
+                  Selecione usuários fictícios apenas para demonstração.
+                  No ICP real, o assinante precisa possuir <strong>certificado digital ICP-Brasil</strong>.
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {STAGES.map(stage => {
+                  const value = assigned[stage.key];
+                  return (
+                    <div key={stage.key} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                      <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
+                        {stage.order}
+                      </div>
+
+                      <div className="flex-1">
+                        <p className="text-sm font-semibold text-slate-800">{stage.label}</p>
+                        <p className="text-[11px] text-slate-400">{stage.role}</p>
+                      </div>
+
+                      <select
+                        value={value}
+                        onChange={(e) => setAssigned(prev => ({ ...prev, [stage.key]: e.target.value }))}
+                        className="min-w-[230px] border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white"
+                      >
+                        {MOCK_USERS.map(u => (
+                          <option key={u.id} value={u.id}>
+                            {u.name} ({u.email})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Preview da ordem */}
             <div>
               <p className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
                 <User size={16} className="text-blue-600" /> Ordem de Assinatura
               </p>
               <div className="space-y-2">
-                {signers.map((s) => (
+                {signersPreview.map((s) => (
                   <div key={s.id} className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl">
                     <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
                       {s.order}
@@ -207,6 +349,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
                     <div className="flex-1">
                       <p className="text-sm font-semibold text-slate-800">{s.name}</p>
                       <p className="text-[11px] text-slate-400">{s.role}</p>
+                      <p className="text-[11px] text-slate-400">{s.email}</p>
                     </div>
                     <ChevronRight size={16} className="text-slate-300" />
                   </div>
@@ -214,17 +357,13 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               </div>
             </div>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
-              <AlertCircle size={18} className="text-amber-500 shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-700 leading-relaxed">
-                Fluxo pronto para integração com <strong>API ICP-Brasil</strong> no backend.
-                No momento, utiliza simulação local + trilha de eventos encadeada por hash.
-              </p>
-            </div>
+            {!!pinError && (
+              <p className="text-xs text-red-500">{pinError}</p>
+            )}
 
             <button
               onClick={startFlow}
-              disabled={flow === 'creating' || flow === 'starting'}
+              disabled={!isSelectionValid || flow === 'creating' || flow === 'starting'}
               className="w-full py-3 bg-blue-700 text-white rounded-xl font-bold hover:bg-blue-800 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
             >
               <Pen size={18} /> {flow === 'creating' || flow === 'starting' ? 'Preparando...' : 'Iniciar Processo de Assinatura'}
@@ -258,26 +397,35 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
               <p className="text-xs text-blue-500 uppercase font-bold mb-1">Assinando agora</p>
               <p className="font-bold text-blue-900">{signerNow?.name}</p>
               <p className="text-sm text-blue-600">{signerNow?.role}</p>
+              <p className="text-[11px] text-blue-700 mt-1">{signerNow?.email}</p>
             </div>
 
-            {/* Assinatura Eletrônica */}
+            {/* Assinatura (mock -> ICP no backend) */}
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
               <p className="text-xs font-bold text-slate-600 uppercase mb-3 flex items-center gap-2">
-                <Shield size={14} className="text-blue-700" /> Assinatura Eletrônica (pronta p/ ICP via backend)
+                <Shield size={14} className="text-blue-700" /> Assinatura Digital (mock) • pronto p/ ICP-Brasil no backend
               </p>
               <div className="bg-white border border-slate-200 rounded-xl p-5 text-center">
-                <p className="text-[11px] text-slate-400 uppercase font-bold">Identificação</p>
+                <p className="text-[11px] text-slate-400 uppercase font-bold">Identificação (da etapa)</p>
                 <div className="mt-2 text-2xl leading-none text-slate-800 select-none" style={{ fontFamily: 'cursive' }}>
-                  {currentUser?.name || signerNow?.name}
+                  {signerNow?.name}
                 </div>
-                <p className="text-xs text-slate-500 mt-2">{currentUser?.email || signerNow?.email}</p>
+                <p className="text-xs text-slate-500 mt-2">{signerNow?.email}</p>
                 <p className="text-[11px] text-slate-400 mt-1">{signerNow?.role}</p>
                 <div className="mt-4 h-px bg-slate-200 w-2/3 mx-auto" />
                 <p className="text-[11px] text-slate-400 mt-3">
-                  Ao integrar o backend, este passo chamará a API ICP-Brasil e retornará o PDF assinado.
+                  No backend, este passo chamará o provedor ICP-Brasil e retornará o PDF PAdES assinado.
                 </p>
               </div>
             </div>
+
+            {/* aviso de permissão */}
+            {!canSign && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-700">
+                Você está logado como <b>{currentUser?.email ?? '(sem email)'}</b>.
+                O assinante desta etapa é <b>{signerNow?.email}</b>.
+              </div>
+            )}
 
             {/* PIN */}
             <div>
@@ -298,7 +446,7 @@ export const SignatureModal: React.FC<SignatureModalProps> = ({
 
             <button
               onClick={handleSign}
-              disabled={flow === 'requesting'}
+              disabled={flow === 'requesting' || !canSign}
               className="w-full py-3 bg-blue-700 text-white rounded-xl font-bold hover:bg-blue-800 transition-all flex items-center justify-center gap-2 disabled:opacity-60"
             >
               {flow === 'requesting'
