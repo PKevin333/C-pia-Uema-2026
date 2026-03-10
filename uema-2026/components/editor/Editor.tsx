@@ -18,7 +18,7 @@ import { User } from '../../types/index';
 import { SignatureModal, SignatureRecord } from './SignatureModal';
 import ModalImagem from './ModalImagem';
 import PainelComentarios from './PainelComentarios';
-import HistoricoVersoes, { Versao } from './HistoricoVersoes';
+import HistoricoVersoes, { Versao, EventoAuditoria } from './HistoricoVersoes';
 
 import {
   useInteracaoImagem,
@@ -472,9 +472,34 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
   const [registroAssinatura, setRegistroAssinatura] = useState<SignatureRecord | null>(null);
   const [abaAtiva, setAbaAtiva] = useState<AbaAtiva>('ia');
   const [versoes, setVersoes] = useState<Versao[]>([]);
+  const [eventos, setEventos] = useState<EventoAuditoria[]>([]);
+
+  // ── Gera ID de evento ─────────────────────────────────────────────────────
+  const gerarIdEvento = () => `ev-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`;
+
+  // ── Registra evento na trilha de auditoria ────────────────────────────────
+  const registrarEvento = useCallback((
+    tipo: EventoAuditoria['tipo'],
+    descricao: string
+  ) => {
+    setEventos(prev => [{
+      id: gerarIdEvento(),
+      tipo,
+      descricao,
+      autor: currentUser?.name || 'Usuário',
+      criadoEm: new Date().toISOString(),
+    }, ...prev]);
+  }, [currentUser]);
+
+  // ── Auto-save states ──────────────────────────────────────────────────────
+  type StatusAutoSave = 'idle' | 'salvando' | 'salvo';
+  const [statusAutoSave, setStatusAutoSave] = useState<StatusAutoSave>('idle');
+  const [ultimoSalvoEm, setUltimoSalvoEm]   = useState<string | null>(null);
+  const conteudoSalvoRef                     = useRef(initialContent);
 
   const refEditor = useRef<HTMLDivElement>(null);
   const refMenuExport = useRef<HTMLDivElement>(null);
+  const selecaoSalvaRef = useRef<Range | null>(null);
 
   // ── Hook de interação com imagens ─────────────────────────────────────────
   const aoAlterarConteudo = useCallback(() => {
@@ -483,16 +508,37 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
 
   const imagem = useInteracaoImagem(refEditor, aoAlterarConteudo);
 
-  // ─────────────────────────────────────────────────────────────────────────
-
   const usuariosAtivos = [
     { nome: 'Ana Silva', cor: 'bg-blue-500' },
     { nome: 'Carlos Tech', cor: 'bg-green-500' },
   ];
 
+  // ── Versão inicial ao abrir o documento ──────────────────────────────────
   useEffect(() => {
     setConteudo(initialContent);
     if (refEditor.current) refEditor.current.innerHTML = initialContent;
+
+    // Cria versão inicial automaticamente
+    const versaoInicial: Versao = {
+      id: gerarId(),
+      numero: 1,
+      conteudo: initialContent,
+      titulo: title,
+      autor: currentUser?.name || 'Sistema',
+      salvoEm: new Date().toISOString(),
+      descricao: 'Versão inicial — documento aberto',
+    };
+    setVersoes([versaoInicial]);
+
+    // Registra evento de criação
+    setEventos([{
+      id: gerarIdEvento(),
+      tipo: 'criacao',
+      descricao: `Documento "${title}" aberto no editor`,
+      autor: currentUser?.name || 'Sistema',
+      criadoEm: new Date().toISOString(),
+    }]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialContent]);
 
   useEffect(() => {
@@ -505,11 +551,50 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
     return () => document.removeEventListener('mousedown', fecharFora);
   }, []);
 
-  // ── Inserir tabela ────────────────────────────────────────────────────────
+  // ── Auto-save a cada 30 segundos se houver alterações ────────────────────
+  // TODO (Backend): trocar onSave() por POST /api/documentos/:id/autosave
+  useEffect(() => {
+    const intervalo = setInterval(() => {
+      if (conteudo === conteudoSalvoRef.current) return;
+      setStatusAutoSave('salvando');
+      setTimeout(() => {
+        onSave(conteudo, tituloLocal);
+        conteudoSalvoRef.current = conteudo;
+        const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        setUltimoSalvoEm(hora);
+        setStatusAutoSave('salvo');
+        registrarEvento('autosave', `Auto-save às ${hora}`);
+        setTimeout(() => setStatusAutoSave('idle'), 3000);
+      }, 600);
+    }, 30000);
+    return () => clearInterval(intervalo);
+  }, [conteudo, tituloLocal, onSave, registrarEvento]);
 
   const handleInserirTabela = (linhas: number, colunas: number) => {
-    document.execCommand('insertHTML', false, gerarTabelaHTML(linhas, colunas));
-    setConteudo(refEditor.current?.innerHTML || '');
+    const html = gerarTabelaHTML(linhas, colunas);
+    const editor = refEditor.current;
+    if (!editor) return;
+
+    // Monta o fragmento a partir do HTML
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const frag = document.createDocumentFragment();
+    while (temp.firstChild) frag.appendChild(temp.firstChild);
+
+    // Tenta usar a seleção salva — só se estiver dentro do editor
+    const rangeSalvo = selecaoSalvaRef.current;
+    if (rangeSalvo && editor.contains(rangeSalvo.commonAncestorContainer)) {
+      rangeSalvo.deleteContents();
+      rangeSalvo.insertNode(frag);
+      rangeSalvo.collapse(false);
+    } else {
+      // Fallback: insere no fim do editor
+      editor.appendChild(frag);
+    }
+
+    selecaoSalvaRef.current = null;
+    editor.focus();
+    setConteudo(editor.innerHTML);
     setMostrarModalTabela(false);
   };
 
@@ -545,18 +630,25 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
       autor: currentUser?.name || 'Usuário',
       salvoEm: new Date().toISOString(),
       descricao: `Versão ${versoes.length + 1} — ${new Date().toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit',
+        hour: '2-digit', minute: '2-digit',
       })}`,
     };
     setVersoes((prev) => [novaVersao, ...prev]);
     onSave(conteudo, tituloLocal);
+    // Sincroniza auto-save e indicador
+    conteudoSalvoRef.current = conteudo;
+    const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    setUltimoSalvoEm(hora);
+    setStatusAutoSave('salvo');
+    registrarEvento('salvamento', `Documento salvo manualmente — v${versoes.length + 1}`);
+    setTimeout(() => setStatusAutoSave('idle'), 3000);
   };
 
   const handleRestaurarVersao = (versao: Versao) => {
     setConteudo(versao.conteudo);
     setTituloLocal(versao.titulo);
     if (refEditor.current) refEditor.current.innerHTML = versao.conteudo;
+    registrarEvento('restauracao', `Versão ${versao.numero} restaurada — "${versao.descricao}"`);
   };
 
   // ── IA: Consultar ─────────────────────────────────────────────────────────
@@ -585,6 +677,7 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
         if (refEditor.current) refEditor.current.innerHTML = novoHtml;
         setInstrucaoIA('');
         setAnaliseIA('✓ Mudanças aplicadas com sucesso!');
+        registrarEvento('ia_aplicada', `IA aplicada: "${instrucaoIA.slice(0, 50)}${instrucaoIA.length > 50 ? '...' : ''}"`);
       }
     } catch (erro: any) {
       setAnaliseIA(`⚠️ ${erro?.message ?? 'Erro ao aplicar edições inteligentes.'}`);
@@ -600,6 +693,7 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
     setMostrarMenuExportar(false);
     try {
       await exportarPDF(tituloLocal, conteudo, registroAssinatura);
+      registrarEvento('exportacao', `Documento exportado como PDF`);
     } finally {
       setExportando(false);
     }
@@ -610,6 +704,7 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
     setMostrarMenuExportar(false);
     try {
       await exportarDOCX(tituloLocal, conteudo);
+      registrarEvento('exportacao', `Documento exportado como DOCX`);
     } catch (erro: any) {
       setAnaliseIA(`⚠️ Erro ao exportar DOCX: ${erro?.message ?? ''}`);
     } finally {
@@ -631,6 +726,7 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
         onSignatureComplete={(record) => {
           setRegistroAssinatura(record);
           onSave(conteudo, tituloLocal, 'Signed');
+          registrarEvento('assinatura', `Documento assinado — Protocolo: ${record.protocol}`);
         }}
       />
 
@@ -828,6 +924,22 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
               </span>
               {registroAssinatura && (
                 <span className="text-[10px] text-slate-400 font-mono">Protocolo: {registroAssinatura.protocol}</span>
+              )}
+              {/* ── Indicador de auto-save ──────────────────────────────── */}
+              {statusAutoSave === 'salvando' && (
+                <span className="flex items-center gap-1 text-[10px] text-slate-400 animate-pulse">
+                  <RefreshCw size={10} className="animate-spin" /> Salvando...
+                </span>
+              )}
+              {statusAutoSave === 'salvo' && (
+                <span className="flex items-center gap-1 text-[10px] text-green-600">
+                  <CheckCircle2 size={10} /> Salvo às {ultimoSalvoEm}
+                </span>
+              )}
+              {statusAutoSave === 'idle' && ultimoSalvoEm && (
+                <span className="text-[10px] text-slate-300">
+                  Auto-save: {ultimoSalvoEm}
+                </span>
               )}
             </div>
           </div>
@@ -1027,7 +1139,7 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
               <PainelComentarios nomeUsuario={currentUser?.name || 'Usuário'} cargoUsuario={currentUser?.role || 'Operador'} />
             )}
 
-            {abaAtiva === 'historico' && <HistoricoVersoes versoes={versoes} onRestaurar={handleRestaurarVersao} />}
+            {abaAtiva === 'historico' && <HistoricoVersoes versoes={versoes} eventos={eventos} onRestaurar={handleRestaurarVersao} />}
           </div>
         </div>
 
@@ -1059,7 +1171,14 @@ const Editor: React.FC<EditorProps> = ({ initialContent, title, onSave, status, 
               <List size={18} />
             </button>
             <button
-              onClick={() => setMostrarModalTabela(true)}
+              onClick={() => {
+                // Salva a posição do cursor antes de abrir o modal
+                const sel = window.getSelection();
+                if (sel && sel.rangeCount > 0) {
+                  selecaoSalvaRef.current = sel.getRangeAt(0).cloneRange();
+                }
+                setMostrarModalTabela(true);
+              }}
               title="Inserir tabela"
               className="p-2 hover:bg-slate-800 rounded transition-colors text-emerald-400"
             >
